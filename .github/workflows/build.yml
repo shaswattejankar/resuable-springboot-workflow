@@ -24,6 +24,7 @@ jobs:
           cache: maven
       - name: Build with Maven
         run: mvn clean package
+        shell: bash
   
       - name: Sync files to ec2 
         env:
@@ -40,6 +41,7 @@ jobs:
             --exclude '/cgi-bin/' \
             --exclude 'README.md' \
             ./ ${{env.dest}}
+        shell: bash
             
       - name: SSH into EC2 and Run Commands towards running jar file
         env:
@@ -55,5 +57,6 @@ jobs:
             cd /srv/hello_world/target/
             nohup java -jar demo-0.0.1-SNAPSHOT.jar & exit
           EOF
+        shell: bash
     
     
