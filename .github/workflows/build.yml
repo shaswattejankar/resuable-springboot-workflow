@@ -1,0 +1,59 @@
+name: reusable action for build, ec2 sync and run jar
+
+on:
+  workflow_call:
+    secrets:
+      USERNAME:
+        required: true
+      PUBLIC_IP:
+        required: true
+      SSH_KEY:
+        required: true
+jobs:
+  build_ec2sync_run_jar:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'oracle'
+          cache: maven
+      - name: Build with Maven
+        run: mvn clean package
+  
+      - name: Sync files to ec2 
+        env:
+          dest: '${{ secrets.USERNAME }}@${{ secrets.PUBLIC_IP }}:/srv/hello_world/'
+        run: |
+          echo "${{ secrets.SSH_KEY }}" >> deploy_key
+          chmod 600 ./deploy_key
+          ssh -i ./deploy_key -p 22 -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.PUBLIC_IP }}        
+          rsync -charlvzi --delete \
+            -e 'ssh -i ./deploy_key -p 22 -o StrictHostKeyChecking=no' \
+            --exclude '/deploy_key' \
+            --exclude '/.*/' \
+            --exclude '.*' \
+            --exclude '/cgi-bin/' \
+            --exclude 'README.md' \
+            ./ ${{env.dest}}
+            
+      - name: SSH into EC2 and Run Commands towards running jar file
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+          SSH_USERNAME: ${{ secrets.USERNAME }}
+          EC2_PUBLIC_IP: ${{ secrets.PUBLIC_IP }}
+        run: |
+          ssh -i ./deploy_key -p 22 -o StrictHostKeyChecking=no ${SSH_USERNAME}@${EC2_PUBLIC_IP} << 'EOF'
+            # Kill processes using port 8080
+            sudo kill -9 $(sudo lsof -t -i:8080)
+  
+            # Run .jar file in the background
+            cd /srv/hello_world/target/
+            nohup java -jar demo-0.0.1-SNAPSHOT.jar & exit
+          EOF
+    
+    
